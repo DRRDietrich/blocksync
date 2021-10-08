@@ -1,0 +1,49 @@
+#!/bin/bash
+
+file_local="${1}"
+file_remote="${3}"
+localhost="$(hostname)"
+server="${2}"
+
+if [ -z "${file_remote}" ];
+	then file_remote="${file_local}";
+fi;
+
+# compare timestamps of files
+t_local=$(stat -c "%Y" "${file_local}");
+t_remote=$(ssh "${server}" stat -c "%Y" "${file_remote}");
+
+if [ -s ${file_local}.vmsync ];
+	then t_sync=$(cat ${file_local}.vmsync);
+	if [ ${t_local} != ${t_sync} ] && [ ${t_sync} != ${t_remote} ];
+		then echo "Conflict! Both the local file and the remote file have changed since the last synchronization. Please make a choice.";
+		exit 0;
+	fi;
+	else echo "First synchronization!";
+	echo ${t_local} > ${file_local}.vmsync;
+	ssh "${server}" "echo ${t_remote} > ${file_remote}.vmsync";
+fi;
+if [ ${t_local} -lt ${t_remote} ];
+	then echo "File on server ${server} is newer. Try to start vmsync from the server.";
+	ssh ${server} "vmsync ${file_remote} ${localhost} ${file_local}";
+	exit 0;
+fi;
+if [ ${t_local} -eq ${t_remote} ];
+	then echo "Files have identical timestamps";
+	exit 0;
+fi;
+if [ ${t_local} -gt ${t_remote} ];
+	# sparsify VM image to save space and time
+	then virt-sparsify --in-place "${file_local}";
+	# reset timestamp
+	touch -d @"${t_local}" "${file_local}"
+	# blocksync file utill success
+	until $HOME/blocksync.py -b 16777216 -c aes128-gcm@openssh.com -w 8 -T "${file_local}" "${server}" "${file_remote}";
+		do echo "Fail! Start the next attempt.";
+	done;
+	echo ${t_local} > ${file_local}.vmsync;
+	# correcting timestamp
+	ssh "${server}" touch -d @"${t_local}" "${file_remote}"
+	ssh "${server}" "echo ${t_local} > ${file_remote}.vmsync";
+	exit 0;
+fi;
