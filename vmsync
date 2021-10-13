@@ -83,7 +83,7 @@ if [ ${t_local} -gt ${t_remote} ]; then
 	rsync "${nvram}" "${server}":"${nvram}";
 	# sync tpm, if exists
 	if [ -e /var/lib/libvirt/swtpm/ ];
-		then rsync -r "${tpm} "${server}":$(dirname ${tpm});
+		then rsync -r "${tpm}" "${server}":$(dirname ${tpm});
         	else "No swtpm found!";
 	fi;
 	# correcting timestamp
